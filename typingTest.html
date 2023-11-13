@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>Typing test</title>
+<style>
+html {
+	font-family: "Arial"
+}
+
+.code {
+	white-space: pre-wrap;
+	font-family: monospace;
+}
+
+.cursor::after {
+	content: '_';
+	position: absolute;
+}
+
+.relative{
+	position: relative !important;
+}
+
+.fill-parent {
+	position: absolute;
+	top : 0;
+	left  : 0;
+	bottom  : 0;
+	right : 0;
+}
+
+.not-typed {
+	color: #AAAAAA;
+}
+
+.error {
+	background-color: rgba(255, 0, 0, 0.5);
+}
+
+.missed {
+/*	background-color: rgba(255, 255, 0, 0.5); */
+/* Making it the same as error for now */
+	background-color: rgba(255, 0, 0, 0.5);
+}
+
+
+.lg {
+	font-size: 48px;
+}
+
+.md {
+	font-size: 32px;
+}
+
+.sm {
+	font-size: 24px;
+}
+
+
+.invisible {
+	color: rgba(1,1,1,0);
+}
+
+.debug {
+	
+}
+
+.label {
+	display: inline-block;
+	width: 350px;
+}
+
+.hidden {
+	display: none !important;
+}
+
+.justify-center {
+	display: flex;
+	flex-flow: column;
+	align-items: center;
+	justify-content: center;
+	gap: 20px;
+}
+
+.btn {
+	outline: 1px solid black;
+	cursor: pointer;
+	background-color: #FFF;
+	padding: 10px;
+	border-radius: 3px;
+}
+
+.btn:hover {
+	background-color: #AAA;
+}
+
+
+</style>
+
+</head>
+<body>
+<div id="output"> This program will not work with JavaScript disabled </div>
+<script>
+
+
+// ----- helpers
+
+const isPrintable = (key) => {
+	return key.length === 1;
+}
+
+const isLetter = (key) => {
+	if (key.length !== 1) return false;
+
+	return (key >= 'a' && key <= 'z') || (key >= 'A' && key <= 'Z');
+}
+
+const popLetter = (letters, wholeWord) => {
+	if (!wholeWord) {
+		letters.pop();
+		return;
+	}
+
+	let isFirstLetter = true;
+	while(letters.length > 0 && (isFirstLetter || isLetter(letters[letters.length-1]))) {
+		letters.pop();
+		isFirstLetter = false;
+	}
+}
+
+const toFixed = (num, decimals) => Math.floor(num * Math.pow(10, decimals)) / Math.pow(10, decimals);
+
+const fmtTime = (timeMS) => {
+	if (timeMS === null) {
+		return "-";
+	}
+
+	const sec = toFixed(timeMS / 1000, 3);
+	const min = toFixed((timeMS / 1000) / 60, 0)
+
+	const pad2 = num => num < 10 ? "0" + num : num.toString();
+	
+	return `${pad2(min)}:${pad2(sec)}`;
+}
+
+const fmtPercentage = (zeroToOneVal) => {
+	return toFixed(zeroToOneVal * 100, 1) + " %"
+}
+
+
+// ----- data
+
+const getRandomWantedText = () => {
+	const texts = [
+		// punctuation has been removed on purpose
+		`she sells sea shells by the sea shore`,
+		`did you know that there is a pile of garbage in the atlantic ocean big enough to be included in maps. for more info search united kingdom`,
+		``,
+	]
+
+	return texts[Math.floor(Math.random() * texts.length)];
+}
+
+
+
+// ---- program
+
+
+const initTextBox = (domNode) => {
+	domNode.innerHTML = `
+<div class="main-screen">
+	<h2 class="lg">Typing test</h2>
+	<div class="sm"><p class="timer-output"></p></div>
+	<div class="sm relative code type-area"></div>
+</div>
+<div class="results-screen code justify-center">
+	<h2 class="lg">Results</h2>
+	<div class="md results"></div>
+	<div class="md justify-center">
+		<div class="btn again-button">&lt;- Again</div>
+	</div>
+</div>
+<div class="code debug"></div>
+`
+	const typeArea = domNode.querySelector(".type-area");
+	// const debugOutput = domNode.querySelector(".debug");
+	const debugOutput = false;
+	const resultsOutput = domNode.querySelector(".results");
+	const mainScreen = domNode.querySelector(".main-screen");
+	const resultsScreen = domNode.querySelector(".results-screen");
+	const timerOutput = domNode.querySelector(".timer-output")
+
+	let state = {};
+	let letters = [];
+	let wantedText = ``;
+
+	const reset = () => {
+		state = {
+			startedTyping: false,
+			ctrlIsDown: false,
+			startedTypingAt: null,
+			finishedTypingAt: null,
+			correctCount: 0,
+			errorCount: 0,
+		};
+
+		letters = [];
+
+		wantedText = getRandomWantedText()
+
+		updateText();
+
+		resultsScreen.classList.add("hidden");
+		mainScreen.classList.remove("hidden");
+	}
+
+
+	const showResultsScreen = (results) => {
+		updateResults();
+
+		resultsScreen.classList.remove("hidden");
+		mainScreen.classList.add("hidden");
+	}
+
+	const getTimeTakenMS = () => {
+		return state.startedTypingAt === null ? null : (
+			state.finishedTypingAt === null ? (new Date() - state.startedTypingAt) : 
+				(state.finishedTypingAt - state.startedTypingAt)
+		);
+	}
+
+	setInterval(() => {
+		const timeTaken = getTimeTakenMS();
+		if (timeTaken) {
+			timerOutput.innerText = `Current time taken: ${fmtTime(getTimeTakenMS())}`;
+		} else {
+			timerOutput.innerText = "Begin typing to start the test (or press Escape to restart and get a new test). You must type the grey text exactly."
+		}
+
+	}, 33);
+
+	const updateDebugText = () => {
+		if (debugOutput) {
+			debugOutput.innerText = JSON.stringify(state, null, 4);
+		}
+	}
+
+	if (debugOutput) {
+		setInterval(() => {
+			updateDebugText();
+		}, 500);
+	}
+
+	
+	domNode.addEventListener("click", (e) => {
+		e.preventDefault();
+		domNode.classList.add("focused");
+
+	});
+
+	const isFinished = (wantedChunks, ourChunks) => {
+		if (!wantedChunks) {
+			wantedChunks = wantedText.split('\n');
+			ourChunks = letters.join('').split('\n');			
+		}
+
+
+		// finished if we have more chunks or if the final chunk we typed has the same or more than expected
+		const isFinished = ourChunks.length > wantedChunks.length || (
+			(ourChunks.length === wantedChunks.length) && ourChunks[ourChunks.length - 1].length >= wantedChunks[ourChunks.length - 1].length
+		)
+
+		return isFinished;
+	}
+
+	const CORRECT = 0, ERROR = 1, UNTYPED = 2;
+	const getCompareResult = (i, wantedChunk, ourChunk) => {
+		return i >= wantedChunk.length ? ERROR : (wantedChunk[i] === ourChunk[i] ? CORRECT : ERROR);
+	}
+
+	const updateResults = (wantedChunks, ourChunks) => {
+		if (!wantedChunks) {
+			wantedChunks = wantedText.split('\n');
+			ourChunks = letters.join('').split('\n');
+		}
+
+		// update results text
+		let correctCount = 0, errorCount = 0;
+		for (let i = 0; i < ourChunks.length; i++) {
+			if (i >= wantedChunks.length) {
+				break;
+			}
+
+			const ourChunk = ourChunks[i];
+			const wantedChunk = wantedChunks[i];
+
+			
+			for(let j = 0; j < ourChunk.length; j++) {
+				const res = getCompareResult(j, wantedChunk, ourChunk);
+				if (res === ERROR) {
+					errorCount += 1;
+				} else if (res === CORRECT) {
+					correctCount += 1;
+				}
+			}
+
+			if (ourChunk.length !== wantedChunk.length) {
+				// if we missed anything, we are counting it as an error
+				errorCount += Math.abs(ourChunk.length - wantedChunk.length);
+			}
+		}
+		state.correctCount = correctCount;
+		state.errorCount = errorCount;
+
+		const timeTakenMS = getTimeTakenMS();
+		
+		// Notice how this isn't the literal number of words. Words like 'supercalifragealisticexpialadocious' should count more than 'a'
+		const printableCharCount = wantedText.split('').filter(c => isPrintable(c)).length;
+		const wordCount = printableCharCount / 5
+		const minutes = timeTakenMS / (1000 * 60)
+		
+		const wpm = wordCount / minutes;
+		const acc = state.correctCount / printableCharCount;
+		const err = state.errorCount / printableCharCount;
+
+		const results = [
+			["Time taken", fmtTime(timeTakenMS)],
+			["Words per minute", toFixed(wpm, 2)],
+//			["Words per minute (if 100% Accuracy)", toFixed(wpm, 2)], // useless and a wierld display thing so I not using this for now
+			["Accuracy", fmtPercentage(acc)],
+			["Errors", fmtPercentage(err)]
+			
+		];
+
+		resultsOutput.innerHTML = results.map(([label, value]) => {
+			return `<div><span class="label"><b>${label}</b></span><span>${value}</span></div>`;
+		}).join("");		
+	}
+
+	const updateText = () => {		
+		const wantedChunks = wantedText.split('\n');
+		const ourChunks = letters.join('').split('\n');
+
+		const gameIsFinished = isFinished(wantedChunks, ourChunks);
+
+		if (gameIsFinished && state.finishedTypingAt === null) {
+			state.finishedTypingAt = new Date();
+			showResultsScreen();
+			return;
+		}
+	
+		typeArea.innerHTML = wantedChunks.map((wantedChunk, iWantedChunk) => {
+			if (iWantedChunk >= ourChunks.length) {
+				return `<span class="not-typed">${wantedChunk}</span>`;
+			}
+
+
+			const ourChunk = ourChunks[iWantedChunk];
+			const remaining = wantedChunk.substring(ourChunk.length);
+
+			let correctCount = 0, errorCount = 0;
+
+
+			
+			// convert correct and error character array into spans. several contiguous CORRECT or ERROR chars are grouped into the same span
+			// for performance reasons
+
+			const typedTextBuilder = [];
+			let currentType = getCompareResult(0, wantedChunk,  ourChunk);
+			let lastIndex = 0;
+			for(let i = 0;i < ourChunk.length;i++) {
+				const type = getCompareResult(i, wantedChunk, ourChunk); 
+				if (type !== currentType) {
+					typedTextBuilder.push([currentType, ourChunk.substring(lastIndex, i)]);
+					currentType = type;
+					lastIndex = i;
+				}
+			}
+			typedTextBuilder.push([currentType, ourChunk.substring(lastIndex)]);
+
+
+			return typedTextBuilder.map(([type, text]) => 
+				`<span class="${type === ERROR ? "error" : ""}">${text}</span>`
+			).join("") + ( // remaining. missed if it is not the current chunk we are typing, else untyped and also add the cursor why not
+				iWantedChunk !== ourChunks.length - 1 ? `<span class="missed">${remaining}</span>` :
+					`<span class="cursor"></span><span class="not-typed">${remaining}</span>`
+			);
+
+		
+		}).join("\n");
+
+		
+		updateDebugText();	
+
+		if (debugOutput) {
+			updateResults(wantedChunks, ourChunks);
+		}
+	};
+
+
+
+	const addLetter = (letter) => {
+		letters.push(letter);
+
+		if (letters.length === 1) {
+			state.startedTypingAt = new Date();
+		}
+
+		updateText();
+	}
+
+	const removeLetter = () => {
+		popLetter(letters, state.ctrlIsDown);
+		updateText();
+	}
+
+
+
+
+	const onKeyDown = (e) => {
+		const key = e.key;
+//		console.log(e);
+		
+		switch(key) {
+			case "Control": {
+				state.ctrlIsDown = true;
+				break;
+			}
+			case "Escape": {
+				reset();
+				break;
+			}
+		}
+
+
+		if (isFinished()) {
+			return;
+		}
+
+		// Handle keyboard input
+	
+		if (isPrintable(key)) {
+			addLetter(e.key);
+		} else {
+			switch (key) {
+				case "Enter": {
+					addLetter("\n");
+					break;
+				}
+				case "Backspace": {
+					removeLetter();
+					break;
+				}
+			}
+		}
+
+	}
+
+
+	const onKeyUp = (e) => {
+		const key = e.key;
+		switch (key) {
+			case "Control": {
+				state.ctrlIsDown = false
+				break;
+			}
+
+		}
+	};
+
+	document.addEventListener("keydown", onKeyDown);
+	document.addEventListener("keyup", onKeyUp);
+
+	
+	reset();
+
+	domNode.querySelector(".again-button").addEventListener("click", () => {
+		reset();
+	});
+
+	
+	// returns a function to clean up the stuff we made
+	return () => {
+		document.removeEventListener("keydown", onKeyDown);
+		document.removeEventListener("keyup", onKeyUp);
+	}
+	
+}
+
+// -----
+
+
+
+initTextBox(
+	document.querySelector("#output")
+);
+
+
+</script>
+</body>
+</html>
